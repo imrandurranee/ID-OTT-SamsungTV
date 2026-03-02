@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1920, height=1080">
+    <title>ID OTT IPTV</title>
+    <link rel="stylesheet" type="text/css" href="css/style.css" />
+</head>
+<body>
+	<div id="live-channel-info" style="display: none; position: absolute; top: 5px; left: 5px; background: rgba(0, 0, 0, 0.3); color: white; padding: 15px 30px; border-radius: 2px; border-left: 2px solid #f39c12; z-index: 100; font-size: 20px; font-family: sans-serif; text-shadow: 2px 2px 4px rgba(0,0,0,0.5);">
+	    <span id="live-channel-name"></span>
+	</div>
+
+	<div id="live-channel-list" style="display: none; position: absolute; top: 0; right: 0; width: 500px; height: 1080px; background: rgba(0, 0, 0, 0.85); z-index: 150; border-left: 4px solid #f39c12; flex-direction: column;">
+	    <div style="padding: 30px; font-size: 28px; font-weight: bold; border-bottom: 2px solid #333; color: #f39c12;">Channel List</div>
+	    <div id="mini-channel-container" style="flex: 1; overflow-y: auto; padding: 10px;">
+	        </div>
+	</div>
+
+    <div id="video-container" style="position: absolute; width: 1920px; height: 1080px; background: #000; z-index: 1;">
+	    <object id="avplay-object" type="application/avplayer" style="width: 1920px; height: 1080px;"></object>
+	</div>
+
+    <div id="login-screen" class="screen" style="display:none; z-index: 10;">
+        <div class="login-box">
+			 <div id="login-error" style="color: #ff4444; font-size: 18px; margin-bottom: 15px; display: none; text-align: center; font-weight: bold;">
+			    Invalid Credentials. Please try again.
+			</div>
+			<div id="login-welcome-msg" style="color: #f39c12; font-size: 18px; margin-bottom: 15px; text-align: center; font-weight: bold; display: block;">
+			    Please enter your service details to begin.
+			</div>
+            <h1>Login</h1>
+            <input type="text" id="input-url" placeholder="Server URL">
+            <input type="text" id="input-user" placeholder="Username">
+            <input type="password" id="input-pass" placeholder="Password">
+            <button id="btn-login">Connect</button>
+            <button id="btn-cancel">Cancel</button>
+        </div>
+    </div>
+
+    <div id="dashboard" class="screen" style="display:none; z-index: 10; flex-direction: column; background: linear-gradient(135deg, #050505 0%, #1a1a1a 100%);">
+    
+    <div style="width: 100%; padding: 40px 60px; box-sizing: border-box; display: flex; justify-content: space-between; align-items: center;">
+        <h1 style="color: #f39c12; font-size: 48px; margin: 0; font-style: italic;">ID <span style="color: #fff;">OTT IPTV</span></h1>
+        <div id="clock" style="font-size: 32px; color: #fff; font-weight: 300;"></div>
+    </div>
+
+	<div style="display: flex; width: 100%; max-width: 1800px; gap: 40px; padding: 0 60px; box-sizing: border-box;">
+	    <div id="dash-live" class="dash-card live">
+	        <div style="font-size: 100px; margin-bottom: 20px;">📺</div>
+	        <div class="label">LIVE TV</div>
+	    </div>
+	    <div id="dash-movies" class="dash-card vod">
+	        <div style="font-size: 100px; margin-bottom: 20px;">🎬</div>
+	        <div class="label">MOVIES</div>
+	    </div>
+	    <div id="dash-series" class="dash-card series">
+	        <div style="font-size: 100px; margin-bottom: 20px;">🍿</div>
+	        <div class="label">SERIES</div>
+	    </div>
+	</div>
+
+    <div style="width: 100%; padding: 40px 60px; display: flex; gap: 20px; justify-content: flex-end;">
+        <div id="dash-settings" class="dash-util">⚙️ SETTINGS</div>
+        <div id="dash-exit" class="dash-util">🚪 EXIT</div>
+    </div>
+
+<div id="user-info-bar" style="position: absolute; bottom: 50px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 0; background: rgba(26, 26, 26, 0.9); padding: 0; border-radius: 12px; border: 1px solid #333; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+		    <div style="padding: 15px 25px; border-right: 1px solid #333; background: rgba(243, 156, 18, 0.1);">
+		        <span style="color: #aaa; font-size: 14px; display: block; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 1px;">Account</span>
+		        <span id="info-username" style="color: #f39c12; font-size: 20px; font-weight: bold;">-</span>
+		    </div>
+		    <div style="padding: 15px 25px; border-right: 1px solid #333;">
+		        <span style="color: #aaa; font-size: 14px; display: block; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 1px;">Status</span>
+		        <span id="info-status" style="color: #00c851; font-size: 20px; font-weight: bold;">-</span>
+		    </div>
+		    <div style="padding: 15px 25px; border-right: 1px solid #333;">
+		        <span style="color: #aaa; font-size: 14px; display: block; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 1px;">Expiration</span>
+		        <span id="info-expiry" style="color: #fff; font-size: 20px; font-weight: bold;">-</span>
+		    </div>
+		    <div style="padding: 15px 25px;">
+		        <span style="color: #aaa; font-size: 14px; display: block; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 1px;">Active Connections</span>
+		        <span id="info-connections" style="color: #fff; font-size: 20px; font-weight: bold;">-</span>
+		    </div>
+		</div>
+		
+</div>
+
+
+    <div id="app" class="screen" style="display:none; z-index: 10;">
+        <div id="sidebar">
+            <div id="search-box">
+                <input type="text" id="search-input" placeholder="Search..." readonly>
+            </div>
+            <div id="category-list"></div>
+        </div>
+        <div id="main-content">
+            <div id="channel-grid"></div>
+        </div>
+    </div>
+
+    <div id="player-controls" style="display: none; z-index: 20;">
+        <h2 id="playing-now-title" style="color: #f39c12; margin-bottom: 20px; text-align: center;"></h2>
+        <div class="control-bar" style="display: flex; justify-content: center; gap: 20px;">
+            <div id="btn-play-pause" class="control-btn">⏸</div>
+            <div id="btn-stop" class="control-btn">⏹</div>
+        </div>
+    </div>
+
+<div id="settings-screen" class="screen" style="display:none; z-index: 10; background: #050505; flex-direction: column; align-items: center; justify-content: center;">
+    <div id="settings-main-menu" style="width: 600px;">
+        <h1 style="text-align: center; color: #f39c12;">Settings</h1>
+        <div id="set-creds" class="item" style="text-align: center;">Update Credentials</div>
+        <div id="set-manage-cats" class="item" style="text-align: center;">Manage Categories</div>
+        <div id="set-back" class="item" style="text-align: center;">Back</div>
+    </div>
+
+    <div id="settings-category-menu" style="display:none; width: 800px; height: 800px; flex-direction: column;">
+        <h2 id="manage-title" style="text-align: center; color: #f39c12;">Manage Categories</h2>
+        <div id="category-toggle-list" style="flex: 1; overflow-y: auto; background: #111; border-radius: 10px;">
+            </div>
+    </div>
+</div>
+
+	<div id="debug-log" style="position: absolute; display: none;  top: 10px; left: 10px; background: rgba(0,0,0,0.7); color: #00ff00; padding: 10px; z-index: 9999; font-family: monospace; font-size: 18px; pointer-events: none;"></div>
+    
+    <script src="$WEBAPIS/webapis/webapis.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>

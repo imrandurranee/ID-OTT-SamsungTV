@@ -1,0 +1,250 @@
+body { margin: 0; background: #000; color: #fff; font-family: sans-serif; overflow: hidden; }
+.screen { position: absolute; width: 1920px; height: 1080px; display: flex; }
+
+/* Dashboard */
+#dashboard { justify-content: center; align-items: center; gap: 30px; background: #050505; }
+.dash-item { width: 300px; height: 180px; background: #1a1a1a; display: flex; align-items: center; justify-content: center; font-size: 28px; border-radius: 15px; border: 4px solid transparent; }
+
+/* Sidebar & Search */
+#sidebar { width: 450px; height: 1080px; background: #111; display: flex; flex-direction: column; border-right: 2px solid #333; }
+#search-box { padding: 30px 20px; background: #111; }
+#search-input { width: 100%; padding: 15px; background: #222; border: 3px solid transparent; color: white; font-size: 22px; border-radius: 8px; outline: none; box-sizing: border-box; }
+#category-list { flex: 1; overflow-y: auto; padding: 10px; }
+
+/* Main Content */
+#main-content { flex: 1; height: 1080px; overflow-y: auto; background: #000; }
+#channel-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 25px; padding: 40px; }
+
+/* Channel Cards */
+.channel-card { background: #1a1a1a; border-radius: 12px; overflow: hidden; border: 4px solid transparent; text-align: center; height: 320px; display: flex; flex-direction: column; }
+.channel-poster { flex: 1; display: flex; align-items: center; justify-content: center; padding: 10px; background: #0a0a0a; }
+.channel-poster img { max-width: 100%; max-height: 180px; object-fit: contain; }
+.channel-name { padding: 15px; font-size: 22px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: rgba(0,0,0,0.6); }
+
+/* Player Controls */
+#player-controls { 
+    position: absolute; 
+    bottom: 0; 
+    left: 0; 
+    width: 100%; 
+    height: 300px; 
+    background: linear-gradient(transparent, rgba(0,0,0,0.9)); 
+    flex-direction: column; 
+    align-items: center; 
+    justify-content: center; 
+}
+.control-btn { font-size: 50px; color: white; padding: 10px 30px; border-radius: 10px; border: 4px solid transparent; }
+.focused { background: #f39c12 !important; color: #000 !important; border-color: #fff !important; transform: scale(1.03); }
+/* Focus */
+
+.item, .dash-item, .channel-card, #search-input, .control-btn { transition: 0.2s; }
+.item { padding: 20px; font-size: 24px; border-bottom: 1px solid #222; border-left: 6px solid transparent; }
+.focused { background: #f39c12 !important; color: #000 !important; border-color: #fff !important; transform: scale(1.03); z-index: 10; }
+#debug-log {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: rgba(0, 0, 0, 0.8);
+    color: #00ff00;
+    padding: 15px;
+    border: 1px solid #333;
+    border-radius: 5px;
+    z-index: 10000;
+    font-family: 'Courier New', monospace;
+    font-size: 20px;
+    pointer-events: none; /* Allows clicks to pass through to the UI below */
+}
+
+
+/* Mini Channel List Items */
+.mini-item {
+    padding: 20px;
+    font-size: 22px;
+    border-bottom: 1px solid #222;
+    color: #ccc;
+    transition: 0.2s;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mini-item.focused {
+    background: #f39c12 !important;
+    color: #000 !important;
+    font-weight: bold;
+}
+
+#settings-screen .item {
+    margin: 10px 0;
+    background: #1a1a1a;
+    border-radius: 8px;
+    border: 3px solid transparent;
+}
+
+#settings-screen .item.focused {
+    border-color: #fff;
+    background: #f39c12 !important;
+}
+
+
+/* Login Screen Layout */
+#login-screen {
+    justify-content: center;
+    align-items: center;
+    background: #050505; /* Matches dashboard theme */
+}
+
+.login-box {
+    background: #1a1a1a;
+    padding: 60px;
+    border-radius: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    width: 600px;
+    border: 2px solid #333;
+}
+
+.login-box h1 {
+    margin: 0 0 20px 0;
+    text-align: center;
+    color: #f39c12;
+}
+
+.login-box input {
+    padding: 15px;
+    background: #222;
+    border: 3px solid transparent;
+    color: white;
+    font-size: 22px;
+    border-radius: 8px;
+    outline: none;
+}
+
+.login-box button {
+    padding: 15px;
+    font-size: 22px;
+    font-weight: bold;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    background: #333;
+    color: white;
+}
+
+/* IPTV Smarters Style Dashboard */
+.dash-card {
+    flex: 1;
+    height: 450px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border: 4px solid transparent;
+    transition: all 0.3s ease;
+}
+
+.dash-card .icon { font-size: 100px; margin-bottom: 20px; }
+.dash-card .label { font-size: 32px; font-weight: bold; letter-spacing: 2px; }
+
+/* Section Colors */
+.dash-card.live { border-bottom: 8px solid #e74c3c; }
+.dash-card.vod { border-bottom: 8px solid #3498db; }
+.dash-card.series { border-bottom: 8px solid #2ecc71; }
+
+.dash-util {
+    padding: 15px 30px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    font-size: 20px;
+    border: 3px solid transparent;
+}
+
+/* Focused State */
+.dash-card.focused, .dash-util.focused {
+    background: #f39c12 !important;
+    color: #000 !important;
+    border-color: #fff !important;
+    transform: translateY(-10px);
+    box-shadow: 0 20px 40px rgba(0,0,0,0.8);
+}
+
+/* IPTV Smarters Pro Card Layout */
+.dash-card {
+    flex: 1; /* Distributes 3 cards equally */
+    height: 500px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border: 4px solid rgba(255, 255, 255, 0.1);
+    box-sizing: border-box;
+    transition: all 0.3s ease;
+}
+
+/* Specific Accent Colors for the Cards */
+.dash-card.live { border-bottom: 12px solid #e74c3c; }   /* Red for Live */
+.dash-card.vod { border-bottom: 12px solid #3498db; }    /* Blue for VOD */
+.dash-card.series { border-bottom: 12px solid #2ecc71; } /* Green for Series */
+
+.dash-card .icon { 
+    font-size: 120px; 
+    margin-bottom: 15px;
+    filter: drop-shadow(0 0 10px rgba(0,0,0,0.5));
+}
+
+.dash-card .label { 
+    font-size: 36px; 
+    font-weight: 800; 
+    letter-spacing: 1px;
+    color: #fff;
+}
+
+/* Focused State: Lift and Glow */
+.dash-card.focused {
+    background: #f39c12 !important;
+    color: #000 !important;
+    border-color: #fff !important;
+    transform: translateY(-15px) scale(1.02);
+    box-shadow: 0 30px 60px rgba(0,0,0,0.7);
+}
+
+.dash-card.focused .label { color: #000 !important; }
+
+
+/* Update these sections in style.css */
+
+#dashboard { 
+    justify-content: center; 
+    align-items: center; 
+    gap: 40px;          /* Increased gap between wider boxes */
+    padding: 0 50px;    /* Reduced side padding to give boxes more room */
+    background: #050505; 
+}
+
+.dash-card { 
+    flex: 1;            /* This makes the boxes wider by filling available space */
+    min-width: 450px;   /* Ensures they have a substantial base width */
+    height: 550px;      /* Increased height to maintain proportion with width */
+    background: #1a1a1a; 
+    display: flex; 
+    flex-direction: column; 
+    align-items: center; 
+    justify-content: center; 
+    font-size: 32px;    /* Slightly larger font for wider boxes */
+    border-radius: 20px; 
+    border: 4px solid transparent; 
+    box-sizing: border-box; /* Ensures border doesn't add to width */
+}
+
+/* Accent colors for the wider cards */
+.dash-card.live { border-bottom: 10px solid #e74c3c; }
+.dash-card.vod { border-bottom: 10px solid #3498db; }
+.dash-card.series { border-bottom: 10px solid #2ecc71; }
+
+
+
