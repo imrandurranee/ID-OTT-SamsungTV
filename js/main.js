@@ -3,6 +3,14 @@ const playerFields = ["btn-play-pause", "btn-stop"];
 let isPaused = false;
 let controlTimeout;
 
+let seekTimer; // Interval for updating the seekbar
+
+let playbackHistory = {}; // Stores { stream_id: timestamp_in_ms }
+let pendingResumeItem = null;
+let resumeIndex = 0; // 0 for Resume, 1 for Start Over
+const resumeFields = ["btn-resume-yes", "btn-resume-no"];
+const HISTORY_FILE = "history.json";
+
 let hiddenCategories = { live: [], movie: [], series: [] };
 let categoryToggleData = [];
 let manageState = "main";
@@ -32,7 +40,6 @@ const FILE_NAME = "creds.json";
 window.onload = function() {
 	
 	setInterval(updateClock, 1000);
-
 	function updateClock() {
 	    const now = new Date();
 	    const clockEl = document.getElementById('clock');
@@ -42,12 +49,31 @@ window.onload = function() {
 	
     window.focus();
     try {
-        const keys = ["Return", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter"];
-        keys.forEach(key => tizen.tvinputdevice.registerKey(key));
+        const keys = [//"Return", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter",
+		        'Info',
+		        'MediaPause', 'MediaPlay',
+		        'MediaPlayPause', 'MediaStop',
+		        'MediaFastForward', 'MediaRewind',
+		        '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+		        'ColorF1Green', 'ColorF0Red',
+		        'ChannelDown', 'ChannelUp','Guide' 
+		 ]
+        
+     // Register keys
+        keys.forEach(function(key) {
+            if (tizen && tizen.tvinputdevice && tizen.tvinputdevice.registerKey) {
+                try {
+                    tizen.tvinputdevice.registerKey(key);
+                } catch (error) {
+                	logDebug("Failed to register key " + key + ": " + error.message);
+                }
+            }
+        }); 
+        
     } catch (e) { console.error("Key Reg Error"); }
+    document.addEventListener('keydown', handleKey);
 
     loadFromFs();
-    document.addEventListener('keydown', handleKey);
 };
 
 function updateFocus() {
@@ -60,6 +86,7 @@ function updateFocus() {
     else if (focusArea === "categories") el = document.getElementById(`cat-${focusIndex}`);
     else if (focusArea === "channels") el = document.getElementById(`ch-${channelFocusIndex}`);
     else if (focusArea === "player") el = document.getElementById(playerFields[playerControlIndex]);
+    else if (focusArea === "resume-popup") el = document.getElementById(resumeFields[resumeIndex]);
     else if (focusArea === "mini-channels") el = document.getElementById(`mini-ch-${channelFocusIndex}`);
     else if (focusArea === "settings") {
         if (manageState === "sections") el = document.getElementById("manage-sec-" + setIndex);
@@ -73,10 +100,36 @@ function updateFocus() {
     }
 }
 
+
 function handleKey(e) {
     const key = e.keyCode;
     let fieldid = loginFields[loginIndex];
     logDebug("DEBUG: focusArea: " + focusArea + "  Key: " + key + "  Field: " + fieldid);
+    
+    // 1. Toggle Debug Log with key '6' (Key Code 54)
+    if (key === 54) { 
+        const logEl = document.getElementById('debug-log');
+        if (logEl) {
+            if (logEl.style.display === 'none') {
+                logEl.style.display = 'block';
+                logDebug("Debug Log: VISIBLE");
+            } else {
+                logEl.style.display = 'none';
+            }
+        }
+        return; 
+    }
+
+    // 2. Global: Back/Return Key Handling for Video Player
+    // This MUST be checked before other conditions to stop background playback
+    if (key === 10009 && focusArea === "player") {
+        e.preventDefault(); // Stop Tizen from exiting the app or navigating back
+        logDebug("Back pressed: Killing hardware player instance.");
+        stopVideo(); 
+        if (currentType !== "live") hideControls(); 
+        return;
+    }
+    
     // Prevent default scrolling for arrow keys
     if ([38, 40, 37, 39].includes(key)) e.preventDefault();
     
@@ -87,18 +140,14 @@ function handleKey(e) {
     }
 
     if (focusArea === "login") {
-        if (key === 38 && loginIndex > 0){
-        		if (document.activeElement.tagName === "INPUT") {
-                document.activeElement.blur();
-            }
-        		loginIndex--;
-        	}
+        if (key === 38 && loginIndex > 0) {
+            if (document.activeElement.tagName === "INPUT") document.activeElement.blur();
+            loginIndex--;
+        }
         else if (key === 40 && loginIndex < loginFields.length - 1) {
-        		if (document.activeElement.tagName === "INPUT") {
-                document.activeElement.blur();
-            }
-        		loginIndex++;
-        	}
+            if (document.activeElement.tagName === "INPUT") document.activeElement.blur();
+            loginIndex++;
+        }
         else if (key === 13) {
             let id = loginFields[loginIndex];
             if (id === "btn-login") {
@@ -131,22 +180,15 @@ function handleKey(e) {
     } 
     else if (focusArea === "search") {
         if (key === 40) { 
-            // Move down to categories and hide keyboard
             document.getElementById('search-input').blur();
             focusArea = "categories";
             focusIndex = 0;
         } else if (key === 13) { 
-            // Enter to type
             let input = document.getElementById('search-input');
             input.readOnly = false;
             input.focus();
-            input.oninput = (el) => {
-                renderChannels(el.target.value);
-            };
-            input.onblur = () => {
-                input.readOnly = true;
-                window.focus();
-            };
+            input.oninput = (el) => { renderChannels(el.target.value); };
+            input.onblur = () => { input.readOnly = true; window.focus(); };
         } else if (key === 10009) {
             exitAppSection();
         }
@@ -198,44 +240,46 @@ function handleKey(e) {
         }
     }
     else if (focusArea === "player") {
+        // Player specific navigation (excluding back button which is handled globally above)
         if (currentType === "live") {
-            // Live TV logic: Left/Right to change channels, Return to stop
-            if (key === 37)  changeLiveChannel(-1); // Previous Channel
-            else if (key === 39) changeLiveChannel(1);  // Next Channel
+            if (key === 37) changeLiveChannel(-1);
+            else if (key === 39) changeLiveChannel(1);
             else if (key === 38 || key === 40) showMiniChannelList();
-            else if (key === 10009) { 
-                stopVideo(); 
-            }
         } else {
-            // Movie/Series logic: Standard player navigation (Play/Pause/Stop)
-            if (key === 10009) { 
-                stopVideo(); 
-                hideControls(); 
-            }
-            else if (key === 37 && playerControlIndex > 0) {
-                playerControlIndex--; 
-            }
-            else if (key === 39 && playerControlIndex < playerFields.length - 1) {
-                playerControlIndex++; 
-            }
+        		showControls();
+            // Movie/Series seeking logic
+            if (key === 37) seekManual(-10000); // Left: Rewind 10s
+            else if (key === 39) seekManual(10000); // Right: Forward 10s
+            else if (key === 427) seekManual(60000); // Channel Up: Forward 1m
+            else if (key === 428) seekManual(-60000); // Channel Down: Rewind 1m
+            
+            // Standard Controls (Play/Pause/Stop)
             else if (key === 13) {
                 if (playerFields[playerControlIndex] === "btn-play-pause") {
-                    if (isPaused) {
-                        webapis.avplay.play();
-                        document.getElementById('btn-play-pause').innerText = "⏸";
-                        isPaused = false;
-                        hideControls();
-                    } else {
-                        webapis.avplay.pause();
-                        document.getElementById('btn-play-pause').innerText = "▶️";
-                        isPaused = true;
-                    }
+                    togglePlayPause();
                 } else {
                     stopVideo();
-                    hideControls();
                 }
             }
         }
+    }
+    else if (focusArea === "resume-popup") {
+        if (key === 37) resumeIndex = 0; // Left
+        else if (key === 39) resumeIndex = 1; // Right
+        else if (key === 13) {
+            document.getElementById('resume-modal').style.display = "none";
+            if (resumeIndex === 0) {
+                logDebug("Resuming the video");
+                playContent(pendingResumeItem, true); // Logic to resume
+            } else {
+                logDebug("Starting from begining");
+                delete playbackHistory[pendingResumeItem.stream_id || pendingResumeItem.movie_id];
+                saveToFs(serverConfig);
+                playContent(pendingResumeItem, false); // Start over
+            }
+        }
+        updateFocus();
+        return;
     }
     else if (focusArea === "mini-channels") {
         if (key === 38 && channelFocusIndex > 0) channelFocusIndex--;
@@ -244,9 +288,7 @@ function handleKey(e) {
             playContent(currentFilteredData[channelFocusIndex]);
             hideMiniChannelList();
         }
-        else if (key === 10009 || key === 37) { // Return or Left to close
-            hideMiniChannelList();
-        }
+        else if (key === 10009 || key === 37) { hideMiniChannelList(); }
     }
     else { 
         handleAppNav(key); 
@@ -254,7 +296,6 @@ function handleKey(e) {
     
     updateFocus();
 }
-
 
 /**
  * New function to handle Live TV channel switching
@@ -283,8 +324,21 @@ function changeLiveChannel(direction) {
 }
 
 function logDebug(msg) {
-    const debugEl = document.getElementById('debug-log');
-    if (debugEl) debugEl.innerText = "DEBUG: " + msg;
+    const logEl = document.getElementById('debug-log');
+    if (logEl) {
+        const now = new Date();
+        const time = now.getHours() + ":" + now.getMinutes() + ":" + now.getSeconds();
+        logEl.innerHTML += `<div>[${time}] ${msg}</div>`;
+        
+        // Auto-scroll so the latest message at the bottom is always visible
+        logEl.scrollTop = logEl.scrollHeight;
+        
+        // Keep the log from getting too long (removes oldest if over 50 lines)
+        if (logEl.children.length > 50) {
+            logEl.removeChild(logEl.firstChild);
+        }
+    }
+    console.log(msg);
 }
 
 function handleAppNav(key) {
@@ -442,67 +496,92 @@ function filterCategories(query) {
     }
 }
 
-function playContent(item) {
+//Add forceStartOver as a second parameter with a default value of false
+function playContent(item, forceStartOver = false) {
     if (!item) return;
-    // Hide all UI layers so the video is visible
+    
+    const streamId = item.stream_id || item.movie_id;
+    
+    // 1. Check history: If user hasn't made a choice yet, show the modal
+    if (!forceStartOver && currentType !== "live" && playbackHistory[streamId]) {
+        pendingResumeItem = item;
+        showResumeModal(playbackHistory[streamId]); // This function should set focusArea to resume-popup
+        return;
+    }
+
+    pendingResumeItem = item; 
+    
+    // UI management
+    document.getElementById('loading-spinner').style.display = "flex";
     document.getElementById('dashboard').style.display = "none";
-    document.getElementById('login-screen').style.display = "none";
     document.getElementById('app').style.display = "none";
     
-    // Get Clean Name
+    focusArea = "player";
+
     let rawName = item.name || item.title || "";
     let cleanName = rawName.includes('|') ? rawName.split('|').pop().trim() : rawName;
+    document.getElementById('playing-now-title').innerText = cleanName;
 
-    logDebug("Playing: " + cleanName);
-
-    const infoBox = document.getElementById('live-channel-info');
-    if (infoBox) infoBox.style.display = "none";
-
+    // Reset player instance
     try {
-        webapis.avplay.stop();
-        webapis.avplay.close();
+        if (webapis.avplay.getState() !== "NONE") {
+            webapis.avplay.stop();
+            webapis.avplay.close();
+        }
     } catch (e) {}
 
-    document.getElementById('app').style.display = "none";
-    
-    // Use cleanName for UI elements
-    document.getElementById('playing-now-title').innerText = cleanName;
-    
-    let streamUrl = "";
-    if (currentType === "live") {
-        streamUrl = `${serverConfig.url}/live/${serverConfig.user}/${serverConfig.pass}/${item.stream_id}.ts`;
-    } else {
-        streamUrl = `${serverConfig.url}/movie/${serverConfig.user}/${serverConfig.pass}/${item.stream_id || item.movie_id}.${item.container_extension}`;
-    }
+    let streamUrl = (currentType === "live") 
+        ? `${serverConfig.url}/live/${serverConfig.user}/${serverConfig.pass}/${item.stream_id}.ts`
+        : `${serverConfig.url}/movie/${serverConfig.user}/${serverConfig.pass}/${item.stream_id || item.movie_id}.${item.container_extension}`;
 
     try {
         webapis.avplay.open(streamUrl);
         webapis.avplay.setDisplayRect(0, 0, 1920, 1080);
         
+        webapis.avplay.setListener({
+            onbufferingcomplete: function() {
+                document.getElementById('loading-spinner').style.display = "none";
+            },
+            onstreamcompleted: function() { stopVideo(); },
+            onerror: function(err) { 
+                document.getElementById('loading-spinner').style.display = "none";
+                stopVideo(); 
+            }
+        });
+
         webapis.avplay.prepareAsync(() => {
             webapis.avplay.play();
             
-            if (currentType === "live") {
-                focusArea = "player"; 
-                document.getElementById('player-controls').style.display = "none";
-                
-                if (infoBox) {
-                    // Update the overlay text with cleanName
-                    document.getElementById('live-channel-name').innerText = cleanName;
-                    infoBox.style.display = "block";
-                 
-                }
-            } else {
+            // 2. Seek ONLY after play() has been called and only if we aren't starting over
+            if (forceStartOver && currentType !== "live" && playbackHistory[streamId]) {
+                logDebug("Resuming at: " + playbackHistory[streamId]);
+                webapis.avplay.seekTo(playbackHistory[streamId]);
+            }
+
+            document.getElementById('live-channel-name').innerText = cleanName;
+            document.getElementById('live-channel-info').style.display = "block";
+
+            if (currentType !== "live") {
+                startSeekTimer();
                 showControls(); 
             }
-        }, (err) => {
-            logDebug("Playback Error: " + err.name);
-            stopVideo();
+        }, (err) => { 
+            document.getElementById('loading-spinner').style.display = "none";
+            stopVideo(); 
         });
+
     } catch (e) { 
-        logDebug("AVPlay Catch: " + e.message);
+        document.getElementById('loading-spinner').style.display = "none";
         stopVideo(); 
     }
+}
+
+function showResumeModal(timestamp) {
+    focusArea = "resume-popup";
+    resumeIndex = 0;
+    document.getElementById('resume-text').innerText = "You watched this up to " + formatTime(timestamp) + ". Resume?";
+    document.getElementById('resume-modal').style.display = "flex";
+    updateFocus();
 }
 
 
@@ -510,37 +589,67 @@ function hideControls() {
     // Only attempt to hide/shift focus if we are actually in the player area
     if (focusArea === "player") {
         document.getElementById('player-controls').style.display = "none";
-        focusArea = "channels"; 
+        //focusArea = "channels"; 
     }
 }
 
+function showControls() {
+    const controls = document.getElementById('player-controls');
+    if (controls) {
+        controls.style.display = 'flex';
+        
+        // Reset the auto-hide timer
+        clearTimeout(controlTimeout);
+        
+        // Only auto-hide if the video is actually playing (not paused)
+        if (!isPaused) {
+            controlTimeout = setTimeout(hideControls, 5000); // Hide after 5 seconds
+        }
+    }
+}
 
 function stopVideo() {
-    logDebug("Stopping playback and releasing hardware...");
+    logDebug("Executing Hard Stop...");
+    clearInterval(seekTimer); // Stop seekbar updates
+    document.getElementById('loading-spinner').style.display = "none";
     
-    try { 
-        // 1. Explicitly stop and close the Tizen AVPlay hardware
-        webapis.avplay.stop(); 
-        webapis.avplay.close(); 
-    } catch(e) {
-        logDebug("AVPlay Stop/Close Error: " + e.message);
+    if (currentType !== "live" && pendingResumeItem) {
+        try {
+            const lastTime = webapis.avplay.getCurrentTime();
+            const duration = webapis.avplay.getDuration();
+            // Only save if watched more than 10s and not at the very end (95%)
+            if (lastTime > 10000 && lastTime < (duration * 0.95)) {
+                playbackHistory[pendingResumeItem.stream_id || pendingResumeItem.movie_id] = lastTime;
+                saveToFs(serverConfig); // Save the unified file
+            } else {
+                delete playbackHistory[pendingResumeItem.stream_id || pendingResumeItem.movie_id];
+                saveToFs(serverConfig); // Save the unified file
+            }
+        } catch (e) {}
     }
     
-    // 2. Reset Player State variables
-    isPaused = false;
-    if(document.getElementById('btn-play-pause')) {
-        document.getElementById('btn-play-pause').innerText = "⏸";
+    
+    try {
+        // Check state before stopping to prevent exceptions
+        var currentState = webapis.avplay.getState();
+        logDebug("Current Player State: " + currentState);
+        
+        if (currentState !== "NONE" && currentState !== "IDLE") {
+            webapis.avplay.stop(); // Stops the stream
+        }
+        webapis.avplay.close(); // Releases the hardware decoder
+    } catch (e) {
+        logDebug("Stop Error: " + e.message);
     }
 
-    // 3. Hide all player-related UI overlays
+    // Reset UI
+    isPaused = false;
+    document.getElementById('player-controls').style.display = "none";
     document.getElementById('live-channel-info').style.display = "none";
     document.getElementById('live-channel-list').style.display = "none";
-    document.getElementById('player-controls').style.display = "none";
     
-    // 4. Restore the main application grid
+    // Return to the grid
     document.getElementById('app').style.display = "flex";
-    
-    // 5. Re-enable navigation in the channel/movie grid
     focusArea = "channels";
     updateFocus();
 }
@@ -561,8 +670,19 @@ function loadFromFs() {
                     stream.close();
                     if (data) {
                         var parsed = JSON.parse(data);
-                        serverConfig = parsed.server || parsed;
+                        
+                        // Load Server Config
+                        serverConfig = parsed.server || { url: "", user: "", pass: "" };
+                        
+                        // Load Hidden Categories
                         if (parsed.hidden) hiddenCategories = parsed.hidden;
+                        
+                        // Load Playback History (New)
+                        if (parsed.history) {
+                            playbackHistory = parsed.history;
+                            logDebug("History loaded from unified file");
+                        }
+
                         attemptLogin(true); 
                     } else { showLogin(); }
                 }, showLogin, "UTF-8");
@@ -571,19 +691,33 @@ function loadFromFs() {
     } catch (e) { showLogin(); }
 }
 
+
 function saveToFs(config) {
     try {
         tizen.filesystem.resolve("documents", function(dir) {
             var file;
-            try { file = dir.createFile(FILE_NAME); } catch(e) { file = dir.resolve(FILE_NAME); }
+            try { 
+                file = dir.resolve(FILE_NAME); 
+            } catch(e) { 
+                file = dir.createFile(FILE_NAME); 
+            }
             file.openStream("w", function(stream) {
-                const saveData = { server: config, hidden: hiddenCategories };
+                // Combine everything into one object
+                const saveData = { 
+                    server: config, 
+                    hidden: hiddenCategories,
+                    history: playbackHistory // Save history here
+                };
                 stream.write(JSON.stringify(saveData));
                 stream.close();
+                logDebug("Unified data saved to FS");
             }, null, "UTF-8");
         }, null, "rw");
-    } catch (e) {}
+    } catch (e) {
+        logDebug("Save Error: " + e.message);
+    }
 }
+
 
 //Replace your attemptLogin function in main.js
 async function attemptLogin(isAuto) {
@@ -622,9 +756,6 @@ async function attemptLogin(isAuto) {
             const max = info.max_connections || "1";
             document.getElementById('info-connections').innerText = `${active} / ${max}`;
 
-            document.getElementById('login-screen').style.display = "none";
-            document.getElementById('dashboard').style.display = "flex";
-            focusArea = "dashboard";
         } else {
         		showLoginError("Invalid Username or Password");
             //showLogin();
@@ -844,5 +975,71 @@ function closeCredScreen() {
         logDebug("Login required for first-time use");
     }
 }
+
+function startSeekTimer() {
+    clearInterval(seekTimer);
+    seekTimer = setInterval(() => {
+        try {
+            const current = webapis.avplay.getCurrentTime();
+            const total = webapis.avplay.getDuration();
+            const percent = (current / total) * 100;
+
+            document.getElementById('seekbar-fill').style.width = percent + "%";
+            document.getElementById('current-time').innerText = formatTime(current);
+            document.getElementById('total-time').innerText = formatTime(total);
+        } catch (e) {}
+    }, 1000);
+}
+
+function seekManual(ms) {
+    try {
+        const state = webapis.avplay.getState();
+        if (state === "PLAYING" || state === "PAUSED") {
+            
+            if (ms > 0) {
+                // Forward (ms is positive)
+                webapis.avplay.jumpForward(ms);
+                logDebug("Forwarding: " + (ms / 1000) + "s");
+            } else {
+                // Rewind (ms is negative, so we convert it to positive for jumpBackward)
+                const rewindMs = Math.abs(ms);
+                webapis.avplay.jumpBackward(rewindMs);
+                logDebug("Rewinding: " + (rewindMs / 1000) + "s");
+            }
+            
+            showControls(); // Bring up the seekbar
+        }
+    } catch (e) {
+        logDebug("Seek Error: " + e.message);
+    }
+}
+
+function formatTime(ms) {
+    if (isNaN(ms) || ms < 0) return "00:00";
+    let totalSeconds = Math.floor(ms / 1000);
+    let hours = Math.floor(totalSeconds / 3600);
+    let minutes = Math.floor((totalSeconds % 3600) / 60);
+    let seconds = totalSeconds % 60;
+
+    let result = "";
+    if (hours > 0) result += (hours < 10 ? "0" + hours : hours) + ":";
+    result += (minutes < 10 ? "0" + minutes : minutes) + ":";
+    result += (seconds < 10 ? "0" + seconds : seconds);
+    return result;
+}
+
+function togglePlayPause() {
+    if (isPaused) {
+        webapis.avplay.play();
+        document.getElementById('btn-play-pause').innerText = "⏸";
+        isPaused = false;
+        // Start auto-hide timer again if desired
+    } else {
+        webapis.avplay.pause();
+        document.getElementById('btn-play-pause').innerText = "▶️";
+        isPaused = true;
+    }
+}
+
 
 

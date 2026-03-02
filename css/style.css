@@ -247,4 +247,20 @@ body { margin: 0; background: #000; color: #fff; font-family: sans-serif; overfl
 .dash-card.series { border-bottom: 10px solid #2ecc71; }
 
 
+#player-controls {
+    pointer-events: none; /* Allows clicks to pass through if necessary, though Tizen uses remote keys */
+}
+
+#player-controls .control-btn {
+    background: rgba(255, 255, 255, 0.1);
+    transition: all 0.2s;
+}
+
+#player-controls .control-btn.focused {
+    background: #f39c12;
+    color: #000;
+    transform: scale(1.1);
+    box-shadow: 0 0 20px rgba(243, 156, 18, 0.5);
+}
+
 
