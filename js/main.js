@@ -80,7 +80,8 @@ window.onload = function() {
 
 function updateFocus() {
     document.querySelectorAll('.focused').forEach(el => el.classList.remove('focused'));
-           
+    document.querySelectorAll('.item.category-active').forEach(el => el.classList.remove('category-active'));
+    
     let el;
     if (focusArea === "search") el = document.getElementById('search-input');
     else if (focusArea === "login") el = document.getElementById(loginFields[loginIndex]);
@@ -93,8 +94,24 @@ function updateFocus() {
             }
         });
     }
-    else if (focusArea === "categories") el = document.getElementById(`cat-${focusIndex}`);
-    else if (focusArea === "channels") el = document.getElementById(`ch-${channelFocusIndex}`);
+    else if (focusArea === "categories") {
+        el = document.getElementById(`cat-${focusIndex}`);
+        
+        // Highlight the category that is CURRENTLY DISPLAYED in the grid
+        const activeCat = document.getElementById(`cat-${lastCategoryIndex}`);
+        if (activeCat) {
+            activeCat.classList.add('category-active');
+        }
+    }
+    else if (focusArea === "channels") {
+        el = document.getElementById(`ch-${channelFocusIndex}`);
+        
+        // When in the grid, the selected category must stay highlighted
+        const activeCat = document.getElementById(`cat-${lastCategoryIndex}`);
+        if (activeCat) {
+            activeCat.classList.add('category-active');
+        }
+    }
     else if (focusArea === "player") el = document.getElementById(playerFields[playerControlIndex]);
     else if (focusArea === "resume-popup") el = document.getElementById(resumeFields[resumeIndex]);
     else if (focusArea === "mini-channels") el = document.getElementById(`mini-ch-${channelFocusIndex}`);
@@ -158,6 +175,9 @@ function handleKey(e) {
             if (document.activeElement.tagName === "INPUT") document.activeElement.blur();
             loginIndex++;
         }
+        if (key === 39 && loginFields[loginIndex] === "input-pass") {
+            togglePasswordVisibility();
+        }
         else if (key === 13) {
             let id = loginFields[loginIndex];
             if (id === "btn-login") {
@@ -167,9 +187,17 @@ function handleKey(e) {
                     pass: document.getElementById('input-pass').value.trim() 
                 };
                 attemptLogin(false);
-            } else if (id === "btn-cancel") { 
+            }else if (id === "input-pass") {
+                // Existing logic to focus the input for typing
+                let el = document.getElementById(id);
+                el.readOnly = false; 
+                el.focus(); 
+                el.onblur = () => { el.readOnly = true; window.focus(); };
+            } 
+            else if (id === "btn-cancel") { 
                 closeCredScreen(); 
-            } else {
+            } 
+            else {
                 let el = document.getElementById(id);
                 el.readOnly = false; 
                 el.focus(); 
@@ -319,7 +347,8 @@ function handleKey(e) {
                 playContent(pendingResumeItem, true); // Logic to resume
             } else {
                 logDebug("Starting from begining");
-                delete playbackHistory[pendingResumeItem.stream_id || pendingResumeItem.movie_id];
+                const uniqueId = pendingResumeItem.id || pendingResumeItem.stream_id || pendingResumeItem.movie_id;
+                delete playbackHistory[uniqueId]; // Clear history if starting over
                 saveToFs(serverConfig);
                 playContent(pendingResumeItem, false); // Start over
             }
@@ -331,10 +360,12 @@ function handleKey(e) {
         if (key === 38 && channelFocusIndex > 0) channelFocusIndex--;
         else if (key === 40 && channelFocusIndex < currentFilteredData.length - 1) channelFocusIndex++;
         else if (key === 13) {
-            playContent(currentFilteredData[channelFocusIndex]);
+        		stopVideo();
             hideMiniChannelList();
+            playContent(currentFilteredData[channelFocusIndex]);
         }
-        else if (key === 10009 || key === 37) { hideMiniChannelList(); }
+        else if (key === 10009 || key === 37) { hideMiniChannelList(); 
+        }
     }
     else { 
         handleAppNav(key); 
@@ -408,9 +439,9 @@ function handleAppNav(key) {
         if (key === 38) { if (focusIndex === 0) focusArea = "search"; else focusIndex--; }
         else if (key === 40 && focusIndex < categoriesData.length - 1) focusIndex++;
         else if (key === 39 && currentFilteredData.length > 0) { 
-            lastCategoryIndex = focusIndex; focusArea = "channels"; channelFocusIndex = 0; 
+            focusArea = "channels"; channelFocusIndex = 0; 
         }
-        else if (key === 13) loadChannels();
+        else if (key === 13) { channelsData = []; loadChannels(); }
     } 
     else if (focusArea === "channels") {
         // ... (Keep existing grid nav logic for Up/Down/Left/Right)
@@ -476,6 +507,15 @@ function renderCategories() {
 
 function loadChannels() {
     // 1. If there's an existing fetch in progress, cancel it
+	lastCategoryIndex = focusIndex;
+	
+	// Check if we already have the data in memory for the current series/category
+    if (channelsData && channelsData.length > 0) {
+        logDebug("Loading from memory, skipping fetch...");
+        renderChannels(document.getElementById('search-input').value);
+        return; 
+    }
+    
     if (currentFetchController) {
         currentFetchController.abort();
     }
@@ -518,7 +558,7 @@ function renderChannels(filterText = "") {
     const grid = document.getElementById('channel-grid');
     grid.innerHTML = "";
 
-    // Filter data based ONLY on channel names/titles
+    // 1. Filter data based on search input
     let displayData = channelsData;
     if (filterText) {
         displayData = channelsData.filter(ch => {
@@ -527,13 +567,22 @@ function renderChannels(filterText = "") {
         });
     }
 
-    // Alphabetical Sort
+    // 2. Updated Sorting Logic: Date Added for VOD, Alphabetical for Live
     displayData.sort((a, b) => {
-        var nameA = (a.name || a.title || "").toLowerCase();
-        var nameB = (b.name || b.title || "").toLowerCase();
-        return nameA < nameB ? -1 : nameA > nameB ? 1 : 0;
+        if (currentType === "movie" || currentType === "series") {
+            // Sort by 'added' timestamp (Newest first)
+            let dateA = parseInt(a.added) || 0;
+            let dateB = parseInt(b.added) || 0;
+            return dateB - dateA; // Descending order
+        } else {
+            // Alphabetical Sort for Live TV
+            var nameA = (a.name || a.title || "").toLowerCase();
+            var nameB = (b.name || b.title || "").toLowerCase();
+            return nameA < nameB ? -1 : nameA > nameB ? 1 : 0;
+        }
     });
 
+    // 3. Render the items
     displayData.forEach((ch, i) => {
         let div = document.createElement('div');
         div.className = "channel-card";
@@ -551,7 +600,6 @@ function renderChannels(filterText = "") {
         grid.appendChild(div);
     });
 
-    // Update the reference for navigation to the currently filtered set
     currentFilteredData = displayData; 
     updateFocus();
 }
@@ -594,13 +642,22 @@ function playContent(item, forceStartOver = false) {
         return;
     }
     
-    const streamId = item.stream_id || item.movie_id;
-    
-    // 1. Check history: If user hasn't made a choice yet, show the modal
+    const streamId = item.id || item.stream_id || item.movie_id;
     if (!forceStartOver && currentType !== "live" && playbackHistory[streamId]) {
         pendingResumeItem = item;
-        showResumeModal(playbackHistory[streamId]); // This function should set focusArea to resume-popup
-        return;
+        
+        // 1. Set the correct focusArea name that matches your updateFocus()
+        focusArea = "resume-popup"; 
+        resumeIndex = 0; 
+        
+        // 2. Clear any active mini-lists that might be visible
+        document.getElementById('live-channel-list').style.display = "none";
+        
+        showResumeModal(playbackHistory[streamId]);
+        
+        // 3. Force the UI to update immediately
+        updateFocus(); 
+        return; // <--- CRITICAL: Stop execution here so we don't reach "focusArea = player" below
     }
 
     pendingResumeItem = item; 
@@ -618,7 +675,7 @@ function playContent(item, forceStartOver = false) {
     let fullDisplayTitle = cleanName;
     if (currentType === "series_episode" && currentSeriesName) {
         // Displays as "Show Name - Episode Title"
-        fullDisplayTitle = currentSeriesName + " - " + episodeName;
+        fullDisplayTitle = currentSeriesName + " - " + fullDisplayTitle;
     }
     
     // Update the player UI elements
@@ -720,21 +777,37 @@ function stopVideo() {
     logDebug("Executing Hard Stop...");
     clearInterval(seekTimer); // Stop seekbar updates
     document.getElementById('loading-spinner').style.display = "none";
+
+    document.getElementById('current-time').innerText = formatTime(0);
+    document.getElementById('total-time').innerText = formatTime(0);
+
     
+ // --- RESUME LOGIC UPDATE ---
     if (currentType !== "live" && pendingResumeItem) {
         try {
             const lastTime = webapis.avplay.getCurrentTime();
             const duration = webapis.avplay.getDuration();
-            // Only save if watched more than 10s and not at the very end (95%)
-            if (lastTime > 10000 && lastTime < (duration * 0.95)) {
-                playbackHistory[pendingResumeItem.stream_id || pendingResumeItem.movie_id] = lastTime;
-                saveToFs(serverConfig); // Save the unified file
-            } else {
-                delete playbackHistory[pendingResumeItem.stream_id || pendingResumeItem.movie_id];
-                saveToFs(serverConfig); // Save the unified file
+            
+            // Fix: Use .id for episodes, or .stream_id/.movie_id for movies
+            const uniqueId = pendingResumeItem.id || pendingResumeItem.stream_id || pendingResumeItem.movie_id;
+
+            if (uniqueId) {
+                // Only save if watched more than 10s and not at the very end (95%)
+                if (lastTime > 10000 && lastTime < (duration * 0.95)) {
+                    playbackHistory[uniqueId] = lastTime;
+                    logDebug("Saved progress for ID: " + uniqueId);
+                } else {
+                    // Remove from history if finished or barely started
+                    delete playbackHistory[uniqueId];
+                    logDebug("Cleared history for ID: " + uniqueId);
+                }
+                saveToFs(serverConfig); // Save the unified file to persistent storage
             }
-        } catch (e) {}
+        } catch (e) {
+            logDebug("History Save Error: " + e.message);
+        }
     }
+    // ----------------------------
     
     
     try {
@@ -1238,3 +1311,18 @@ function renderEpisodes(seasonNumber) {
     updateFocus();
 }
 
+
+function togglePasswordVisibility() {
+    const passInput = document.getElementById('input-pass');
+    const toggleText = document.getElementById('toggle-password-text');
+    
+    if (passInput.type === "password") {
+        passInput.type = "text";
+        toggleText.innerText = "HIDE";
+        logDebug("Password visibility: SHOWN");
+    } else {
+        passInput.type = "password";
+        toggleText.innerText = "SHOW";
+        logDebug("Password visibility: HIDDEN");
+    }
+}

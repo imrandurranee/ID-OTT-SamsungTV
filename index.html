@@ -32,7 +32,10 @@
             <h1>Login</h1>
             <input type="text" id="input-url" placeholder="Server URL">
             <input type="text" id="input-user" placeholder="Username">
-            <input type="password" id="input-pass" placeholder="Password">
+            <div class="input-container">
+			    <input type="password" id="input-pass" placeholder="Password" readonly>
+			    <span id="toggle-password-text" style="margin-left: -40px; color: #fff; font-size: 12px;">SHOW</span>
+			</div>
             <button id="btn-login">Connect</button>
             <button id="btn-cancel">Cancel</button>
         </div>

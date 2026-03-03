@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<widget xmlns:tizen="http://tizen.org/ns/widgets" xmlns="http://www.w3.org/ns/widgets" id="http://yourdomain/IDOTT" version="1.0.0" viewmodes="maximized">
+<widget xmlns:tizen="http://tizen.org/ns/widgets" xmlns="http://www.w3.org/ns/widgets" id="http://yourdomain/IDOTT" version="1.0.1" viewmodes="maximized">
     <access origin="*" subdomains="true"></access>
     <tizen:allow-navigation>*</tizen:allow-navigation>
     <tizen:application id="Dnp252v3g8.IDOTT" package="Dnp252v3g8" required_version="2.4"/>
@@ -12,7 +12,7 @@
     <feature name="http://tizen.org/feature/screen.size.normal.1080.1920"/>
     <icon src="icon.png"/>
     <tizen:metadata key="http://tizen.org/metadata/app_ui_type/base_screen_resolution" value="extensive"/>
-    <name>IDOTT</name>
+    <name>ID OTT IPTV</name>
     <tizen:privilege name="http://developer.samsung.com/privilege/avplay"/>
     <tizen:privilege name="http://tizen.org/privilege/internet"/>
     <tizen:privilege name="http://tizen.org/privilege/display"/>
