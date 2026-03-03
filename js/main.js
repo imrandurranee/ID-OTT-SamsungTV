@@ -4,6 +4,8 @@ let isPaused = false;
 let controlTimeout;
 
 let seekTimer; // Interval for updating the seekbar
+let currentFetchController = null; // To track and cancel pending requests
+
 
 let playbackHistory = {}; // Stores { stream_id: timestamp_in_ms }
 let pendingResumeItem = null;
@@ -82,7 +84,15 @@ function updateFocus() {
     let el;
     if (focusArea === "search") el = document.getElementById('search-input');
     else if (focusArea === "login") el = document.getElementById(loginFields[loginIndex]);
-    else if (focusArea === "dashboard") el = document.getElementById(dashFields[dashIndex]);
+    else if (focusArea === "dashboard") {
+        dashFields.forEach((id, idx) => {
+            const el = document.getElementById(id);
+            if (el) {
+                if (idx === dashIndex) el.classList.add('focused');
+                else el.classList.remove('focused');
+            }
+        });
+    }
     else if (focusArea === "categories") el = document.getElementById(`cat-${focusIndex}`);
     else if (focusArea === "channels") el = document.getElementById(`ch-${channelFocusIndex}`);
     else if (focusArea === "player") el = document.getElementById(playerFields[playerControlIndex]);
@@ -167,17 +177,50 @@ function handleKey(e) {
             }
         }
     } 
+ // Inside handleKey(e) function
+ // Locate this block in your main.js (around line 123)
     else if (focusArea === "dashboard") {
-        if (key === 37 && dashIndex > 0) dashIndex--;
-        else if (key === 39 && dashIndex < dashFields.length - 1) dashIndex++;
-        else if (key === 13) {
+        // 39: Right
+        if (key === 39) { 
+            if (dashIndex < 2) {
+                dashIndex++; // Move between Live, Movies, Series
+            } else if (dashIndex === 3) {
+                dashIndex = 4; // Move from Settings to Exit
+            }
+        } 
+        // 37: Left
+        else if (key === 37) { 
+            if (dashIndex > 0 && dashIndex <= 2) {
+                dashIndex--; // Move between Series, Movies, Live
+            } else if (dashIndex === 4) {
+                dashIndex = 3; // Move from Exit to Settings
+            } else if (dashIndex === 3) {
+                dashIndex = 0; // Jump from Settings back to the first card
+            }
+        } 
+        // 40: Down
+        else if (key === 40) { 
+            if (dashIndex < 3) {
+                dashIndex = 3; // Go down to Settings from any top card
+            } else if (dashIndex === 3) {
+                dashIndex = 4; // Down from Settings goes to Exit
+            }
+        } 
+        // 38: Up
+        else if (key === 38) { 
+            if (dashIndex >= 3) {
+                dashIndex = 0; // Go back up to the top row (Live TV)
+            }
+        } 
+        else if (key === 13) { // Enter
             if (dashIndex === 0) startSection("live");
             else if (dashIndex === 1) startSection("movie");
             else if (dashIndex === 2) startSection("series");
             else if (dashIndex === 3) openSettings();
             else if (dashIndex === 4) tizen.application.getCurrentApplication().exit();
         }
-    } 
+        updateFocus();
+    }
     else if (focusArea === "search") {
         if (key === 40) { 
             document.getElementById('search-input').blur();
@@ -248,12 +291,15 @@ function handleKey(e) {
         } else {
         		showControls();
             // Movie/Series seeking logic
+            if (currentType === "series_episode") {
+            		if (key === 38 || key === 40) showMiniChannelList(); // Up/Down: Show List
+            }
+            // Standard Controls (Play/Pause/Stop)
+
             if (key === 37) seekManual(-10000); // Left: Rewind 10s
             else if (key === 39) seekManual(10000); // Right: Forward 10s
             else if (key === 427) seekManual(60000); // Channel Up: Forward 1m
             else if (key === 428) seekManual(-60000); // Channel Down: Rewind 1m
-            
-            // Standard Controls (Play/Pause/Stop)
             else if (key === 13) {
                 if (playerFields[playerControlIndex] === "btn-play-pause") {
                     togglePlayPause();
@@ -342,35 +388,48 @@ function logDebug(msg) {
 }
 
 function handleAppNav(key) {
-    if (key === 10009) { exitAppSection(); return; }
+    if (key === 10009) { 
+    		document.getElementById('loading-spinner').style.display = "none";
+    	
+        if (currentType === "series_episode") {
+            renderSeasons();
+            return;
+        } else if (currentType === "series_season") {
+            currentType = "series";
+            loadChannels();
+            return;
+        }
+        exitAppSection(); 
+        return; 
+    }
 
     if (focusArea === "categories") {
-        if (key === 38) { 
-            if (focusIndex === 0) focusArea = "search"; 
-            else focusIndex--; 
-        }
+        // ... (Keep existing category nav logic)
+        if (key === 38) { if (focusIndex === 0) focusArea = "search"; else focusIndex--; }
         else if (key === 40 && focusIndex < categoriesData.length - 1) focusIndex++;
         else if (key === 39 && currentFilteredData.length > 0) { 
-            lastCategoryIndex = focusIndex; 
-            focusArea = "channels"; 
-            channelFocusIndex = 0; 
+            lastCategoryIndex = focusIndex; focusArea = "channels"; channelFocusIndex = 0; 
         }
         else if (key === 13) loadChannels();
     } 
     else if (focusArea === "channels") {
-        if (key === 38) { 
-            if (channelFocusIndex >= 4) channelFocusIndex -= 4; 
-            else focusArea = "search"; 
-        }
-        else if (key === 40) { 
-            if (channelFocusIndex + 4 < currentFilteredData.length) channelFocusIndex += 4; 
-        }
-        else if (key === 37) { 
-            if (channelFocusIndex % 4 === 0) { focusArea = "categories"; focusIndex = lastCategoryIndex; } 
-            else channelFocusIndex--; 
-        }
+        // ... (Keep existing grid nav logic for Up/Down/Left/Right)
+        if (key === 38) { if (channelFocusIndex >= 4) channelFocusIndex -= 4; else focusArea = "search"; }
+        else if (key === 40) { if (channelFocusIndex + 4 < currentFilteredData.length) channelFocusIndex += 4; }
+        else if (key === 37) { if (channelFocusIndex % 4 === 0) { focusArea = "categories"; focusIndex = lastCategoryIndex; } else channelFocusIndex--; }
         else if (key === 39 && channelFocusIndex < currentFilteredData.length - 1) channelFocusIndex++;
-        else if (key === 13) playContent(currentFilteredData[channelFocusIndex]);
+        
+        // ENTER KEY LOGIC
+        else if (key === 13) {
+            const selectedItem = currentFilteredData[channelFocusIndex];
+            if (currentType === "series") {
+                loadSeriesDetails(selectedItem.series_id);
+            } else if (currentType === "series_season") {
+                renderEpisodes(selectedItem.season_number);
+            } else {
+                playContent(selectedItem);
+            }
+        }
     }
 }
 
@@ -416,14 +475,43 @@ function renderCategories() {
 }
 
 function loadChannels() {
+    // 1. If there's an existing fetch in progress, cancel it
+    if (currentFetchController) {
+        currentFetchController.abort();
+    }
+
+    // 2. Create a new controller for this specific request
+    currentFetchController = new AbortController();
+    const signal = currentFetchController.signal;
+
+    const grid = document.getElementById('channel-grid');
+    grid.innerHTML = "";
+    document.getElementById('loading-spinner').style.display = "flex";
+
     let catId = categoriesData[focusIndex].category_id;
     let action = (currentType === "live") ? "get_live_streams" : (currentType === "movie") ? "get_vod_streams" : "get_series";
-    fetch(`${serverConfig.url}/player_api.php?username=${serverConfig.user}&password=${serverConfig.pass}&action=${action}&category_id=${catId}`)
-        .then(r => r.json()).then(data => { 
+    
+    // 3. Pass the signal to the fetch call
+    fetch(`${serverConfig.url}/player_api.php?username=${serverConfig.user}&password=${serverConfig.pass}&action=${action}&category_id=${catId}`, { signal })
+        .then(r => r.json())
+        .then(data => { 
+            document.getElementById('loading-spinner').style.display = "none";
+            currentFetchController = null; // Clear the controller on success
             channelsData = data; 
             renderChannels(document.getElementById('search-input').value); 
+        })
+        .catch(e => {
+            if (e.name === 'AbortError') {
+                logDebug("Fetch aborted: User switched categories or exited.");
+            } else {
+                document.getElementById('loading-spinner').style.display = "none";
+                currentFetchController = null;
+                logDebug("Load Error: " + e.message);
+            }
         });
 }
+
+
 
 
 function renderChannels(filterText = "") {
@@ -499,6 +587,12 @@ function filterCategories(query) {
 //Add forceStartOver as a second parameter with a default value of false
 function playContent(item, forceStartOver = false) {
     if (!item) return;
+
+ // If it's a Series, we need to drill down into Seasons/Episodes first
+    if (currentType === "series") {
+        loadSeriesDetails(item.series_id || item.stream_id);
+        return;
+    }
     
     const streamId = item.stream_id || item.movie_id;
     
@@ -520,8 +614,17 @@ function playContent(item, forceStartOver = false) {
 
     let rawName = item.name || item.title || "";
     let cleanName = rawName.includes('|') ? rawName.split('|').pop().trim() : rawName;
-    document.getElementById('playing-now-title').innerText = cleanName;
 
+    let fullDisplayTitle = cleanName;
+    if (currentType === "series_episode" && currentSeriesName) {
+        // Displays as "Show Name - Episode Title"
+        fullDisplayTitle = currentSeriesName + " - " + episodeName;
+    }
+    
+    // Update the player UI elements
+    document.getElementById('playing-now-title').innerText = fullDisplayTitle;
+    document.getElementById('live-channel-name').innerText = fullDisplayTitle;
+    
     // Reset player instance
     try {
         if (webapis.avplay.getState() !== "NONE") {
@@ -530,10 +633,17 @@ function playContent(item, forceStartOver = false) {
         }
     } catch (e) {}
 
-    let streamUrl = (currentType === "live") 
-        ? `${serverConfig.url}/live/${serverConfig.user}/${serverConfig.pass}/${item.stream_id}.ts`
-        : `${serverConfig.url}/movie/${serverConfig.user}/${serverConfig.pass}/${item.stream_id || item.movie_id}.${item.container_extension}`;
-
+ // Inside playContent(item, forceStartOver)
+    let streamUrl;
+    if (currentType === "live") {
+        streamUrl = `${serverConfig.url}/live/${serverConfig.user}/${serverConfig.pass}/${item.stream_id}.ts`;
+    } else if (currentType === "series_episode") {
+        // Series episodes use item.id and item.container_extension
+        streamUrl = `${serverConfig.url}/series/${serverConfig.user}/${serverConfig.pass}/${item.id}.${item.container_extension}`;
+    } else {
+        streamUrl = `${serverConfig.url}/movie/${serverConfig.user}/${serverConfig.pass}/${item.stream_id || item.movie_id}.${item.container_extension}`;
+    }
+    
     try {
         webapis.avplay.open(streamUrl);
         webapis.avplay.setDisplayRect(0, 0, 1920, 1080);
@@ -557,8 +667,6 @@ function playContent(item, forceStartOver = false) {
                 logDebug("Resuming at: " + playbackHistory[streamId]);
                 webapis.avplay.seekTo(playbackHistory[streamId]);
             }
-
-            document.getElementById('live-channel-name').innerText = cleanName;
             document.getElementById('live-channel-info').style.display = "block";
 
             if (currentType !== "live") {
@@ -655,10 +763,18 @@ function stopVideo() {
 }
 
 function exitAppSection() {
+    // Abort any active fetch so it doesn't pop up later
+    if (currentFetchController) {
+        currentFetchController.abort();
+        currentFetchController = null;
+    }
+
+    document.getElementById('loading-spinner').style.display = "none";
     document.getElementById('app').style.display = "none";
     document.getElementById('dashboard').style.display = "flex";
     focusArea = "dashboard";
 }
+
 
 function loadFromFs() {
     try {
@@ -1042,4 +1158,83 @@ function togglePlayPause() {
 }
 
 
+let seriesDetailData = null; // Store the fetched series details globally
+let currentSeriesName = ""; // Global variable to store the Show Name
+
+async function loadSeriesDetails(seriesId) {
+    if (currentFetchController) currentFetchController.abort();
+    currentFetchController = new AbortController();
+
+    document.getElementById('loading-spinner').style.display = "flex";
+    document.getElementById('channel-grid').innerHTML = "";
+
+    try {
+        const res = await fetch(`${serverConfig.url}/player_api.php?username=${serverConfig.user}&password=${serverConfig.pass}&action=get_series_info&series_id=${seriesId}`, { 
+            signal: currentFetchController.signal 
+        });
+        seriesDetailData = await res.json();
+        
+        currentSeriesName = seriesDetailData.info.name || ""; 
+        document.getElementById('loading-spinner').style.display = "none";
+        currentFetchController = null;
+        renderSeasons();
+    } catch (e) {
+        if (e.name !== 'AbortError') {
+            document.getElementById('loading-spinner').style.display = "none";
+            currentFetchController = null;
+        }
+    }
+}
+
+
+function renderSeasons() {
+    const grid = document.getElementById('channel-grid');
+    grid.innerHTML = "";
+    currentType = "series_season"; // Update state for handleAppNav
+
+    const seasons = seriesDetailData.seasons || [];
+    
+    seasons.forEach((season, i) => {
+        let div = document.createElement('div');
+        div.className = "channel-card";
+        div.id = `ch-${i}`;
+        div.innerHTML = `
+            <div class="channel-poster"><div style="font-size:50px; margin-top:20px;">📂</div></div>
+            <div class="channel-name">Season ${season.season_number}</div>
+        `;
+        grid.appendChild(div);
+    });
+
+    currentFilteredData = seasons; 
+    channelFocusIndex = 0;
+    updateFocus();
+}
+
+function renderEpisodes(seasonNumber) {
+    const grid = document.getElementById('channel-grid');
+    grid.innerHTML = "";
+    currentType = "series_episode"; // Update state for handleAppNav
+
+    // The API returns episodes grouped by season number in an object
+    const episodes = seriesDetailData.episodes[seasonNumber] || [];
+    
+    episodes.forEach((ep, i) => {
+        let div = document.createElement('div');
+        div.className = "channel-card";
+        div.id = `ch-${i}`;
+        
+        let imgUrl = ep.info && ep.info.movie_image ? ep.info.movie_image : "";
+        let imgHtml = imgUrl ? `<img src="${imgUrl}" onerror="this.src='https://via.placeholder.com/150?text=EP'">` : `<div class="icon-placeholder">🎬</div>`;
+
+        div.innerHTML = `
+            <div class="channel-poster">${imgHtml}</div>
+            <div class="channel-name">E${ep.episode_num}: ${ep.title}</div>
+        `;
+        grid.appendChild(div);
+    });
+
+    currentFilteredData = episodes;
+    channelFocusIndex = 0;
+    updateFocus();
+}
 
