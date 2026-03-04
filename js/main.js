@@ -189,7 +189,7 @@ function updateFocus() {
 
     // 8. Mini Channel List (Right-side list during video playback)
     if (focusArea === "mini-channels") {
-        const miniItems = document.querySelectorAll('#mini-list .item');
+        const miniItems = document.querySelectorAll('#mini-channel-container .item');
         miniItems.forEach((item, i) => {
             const isFocused = i === channelFocusIndex;
             item.classList.toggle('focused', isFocused);
@@ -516,8 +516,8 @@ function handleKey(e) {
         return;
     }
     else if (focusArea === "mini-channels") {
-        if (key === 38 && channelFocusIndex > 0) channelFocusIndex--;
-        else if (key === 40 && channelFocusIndex < currentFilteredData.length - 1) channelFocusIndex++;
+        if (key === 38 && channelFocusIndex > 0) { channelFocusIndex--; updateFocus();}
+        else if (key === 40 && channelFocusIndex < currentFilteredData.length - 1) { channelFocusIndex++; ; updateFocus();}
         else if (key === 13) {
         		stopVideo();
             hideMiniChannelList();
@@ -1224,7 +1224,7 @@ function showMiniChannelList() {
         let cleanName = rawName.includes('|') ? rawName.split('|').pop().trim() : rawName;
         
         let div = document.createElement('div');
-        div.className = "mini-item";
+        div.className = "item";
         div.id = `mini-ch-${i}`;
         div.innerText = cleanName;
         container.appendChild(div);
