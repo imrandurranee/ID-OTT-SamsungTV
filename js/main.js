@@ -1,7 +1,11 @@
+let savedAccounts = []; // Array of { url, user, pass, active: boolean }
+
 let playerControlIndex = 0;
 const playerFields = ["btn-play-pause", "btn-stop"];
 let isPaused = false;
 let controlTimeout;
+
+let loginOrigin = "startup";
 
 let seekTimer; // Interval for updating the seekbar
 let currentFetchController = null; // To track and cancel pending requests
@@ -23,9 +27,8 @@ const loginFields = ["input-url", "input-user", "input-pass", "btn-login", "btn-
 let loginIndex = 0;
 let dashIndex = 0;
 
-const dashFields = ["dash-live", "dash-movies", "dash-series", "dash-settings", "dash-exit"];
-
-const setFields = ["set-creds", "set-manage-cats", "set-back"];
+const dashFields = ["dash-live", "dash-movies", "dash-series", "dash-reload", "dash-settings", "dash-exit"];
+const setFields = ["set-creds", "set-manage-accounts", "set-manage-cats", "set-back"];
 
 let setIndex = 0;
 let currentType = "live"; 
@@ -78,23 +81,27 @@ window.onload = function() {
     loadFromFs();
 };
 
+
+
 function updateFocus() {
+    // 1. Sidebar Category List (Main App)
+//    const listItems = document.querySelectorAll('#category-list .item');
+//    listItems.forEach((item, i) => {
+//    	const isFocused = (focusArea === 'categories' && i === focusIndex);
+//    	const isActive = (i === focusIndex);
+//    	
+//        item.classList.toggle('focused', isFocused);
+//        item.classList.toggle('active-category', isActive); // New class for persistent highlight
+//        
+//        if (isFocused) {
+//            item.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+//        }
+//    });
     document.querySelectorAll('.focused').forEach(el => el.classList.remove('focused'));
     document.querySelectorAll('.item.category-active').forEach(el => el.classList.remove('category-active'));
-    
+
     let el;
-    if (focusArea === "search") el = document.getElementById('search-input');
-    else if (focusArea === "login") el = document.getElementById(loginFields[loginIndex]);
-    else if (focusArea === "dashboard") {
-        dashFields.forEach((id, idx) => {
-            const el = document.getElementById(id);
-            if (el) {
-                if (idx === dashIndex) el.classList.add('focused');
-                else el.classList.remove('focused');
-            }
-        });
-    }
-    else if (focusArea === "categories") {
+    if (focusArea === "categories") {
         el = document.getElementById(`cat-${focusIndex}`);
         
         // Highlight the category that is CURRENTLY DISPLAYED in the grid
@@ -112,26 +119,93 @@ function updateFocus() {
             activeCat.classList.add('category-active');
         }
     }
-    else if (focusArea === "player") el = document.getElementById(playerFields[playerControlIndex]);
-    else if (focusArea === "resume-popup") el = document.getElementById(resumeFields[resumeIndex]);
-    else if (focusArea === "mini-channels") el = document.getElementById(`mini-ch-${channelFocusIndex}`);
-    else if (focusArea === "settings") {
-        if (manageState === "sections") el = document.getElementById("manage-sec-" + setIndex);
-        else if (manageState === "toggling") el = document.getElementById("toggle-cat-" + setIndex);
-        else el = document.getElementById(setFields[setIndex]);
-    }
-
     if (el) {
         el.classList.add('focused');
         el.scrollIntoView({ block: "center", behavior: "smooth" });
     }
+    
+    // 2. Channel/Movie/Series Grid (Main App)
+    const gridItems = document.querySelectorAll('.channel-card');
+    gridItems.forEach((item, i) => {
+        const isFocused = focusArea === 'channels' && i === channelFocusIndex;
+        item.classList.toggle('focused', isFocused);
+        if (isFocused) {
+            item.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+    });
+
+    // 3. Dashboard Navigation
+    if (focusArea === "dashboard") {
+        dashFields.forEach((id, i) => {
+            const el = document.getElementById(id);
+            if (el) el.classList.toggle("focused", i === dashIndex);
+        });
+    }
+
+    // 4. Settings Screens (Accounts, Categories, Sections)
+    if (focusArea === "settings") {
+        if (manageState === "main") {
+            setFields.forEach((id, i) => {
+                const el = document.getElementById(id);
+                if (el) el.classList.toggle("focused", i === setIndex);
+            });
+        } 
+        else if (manageState === "sections" || manageState === "accounts" || manageState === "toggling") {
+            // All these states use the generic #category-toggle-list
+            const items = document.querySelectorAll('#category-toggle-list .item');
+            items.forEach((item, i) => {
+                const isFocused = (i === setIndex);
+                item.classList.toggle("focused", isFocused);
+                if (isFocused) {
+                    item.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                }
+            });
+        }
+    }
+
+    // 5. Login Screen
+    if (focusArea === "login") {
+        loginFields.forEach((id, i) => {
+            const el = document.getElementById(id);
+            if (el) el.classList.toggle("focused", i === loginIndex);
+        });
+    }
+
+    // 6. Video Player Controls (Overlay)
+    if (focusArea === "player") {
+        playerFields.forEach((id, i) => {
+            const el = document.getElementById(id);
+            if (el) el.classList.toggle("focused", i === playerControlIndex);
+        });
+    }
+
+    // 7. Resume Playback Popup
+    if (focusArea === "resume-popup") {
+        resumeFields.forEach((id, i) => {
+            const el = document.getElementById(id);
+            if (el) el.classList.toggle("focused", i === resumeIndex);
+        });
+    }
+
+    // 8. Mini Channel List (Right-side list during video playback)
+    if (focusArea === "mini-channels") {
+        const miniItems = document.querySelectorAll('#mini-list .item');
+        miniItems.forEach((item, i) => {
+            const isFocused = i === channelFocusIndex;
+            item.classList.toggle('focused', isFocused);
+            if (isFocused) {
+                item.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            }
+        });
+    }
 }
+
 
 
 function handleKey(e) {
     const key = e.keyCode;
     let fieldid = loginFields[loginIndex];
-    logDebug("DEBUG: focusArea: " + focusArea + "  Key: " + key + "  Field: " + fieldid);
+    logDebug("DEBUG: focusArea: " + focusArea + "  Key: " + key + "  manageState: " + manageState + "  Field: " + fieldid);
     
     // 1. Toggle Debug Log with key '6' (Key Code 54)
     if (key === 54) { 
@@ -194,9 +268,20 @@ function handleKey(e) {
                 el.focus(); 
                 el.onblur = () => { el.readOnly = true; window.focus(); };
             } 
-            else if (id === "btn-cancel") { 
-                closeCredScreen(); 
-            } 
+            else if (id === "btn-cancel") {
+                if (loginOrigin === "switch") {
+                    // Return to Switch Account List
+                    document.getElementById('login-screen').style.display = "none";
+                    document.getElementById('settings-screen').style.display = "flex";
+                    focusArea = "settings";
+                    manageState = "accounts";
+                    renderAccountList(); // Ensure the list is repopulated
+                } else {
+                    // Default behavior (e.g., exit app if no accounts exist)
+                    //tizen.application.getCurrentApplication().exit();
+                    closeCredScreen(); 
+                }
+            }
             else {
                 let el = document.getElementById(id);
                 el.readOnly = false; 
@@ -212,40 +297,42 @@ function handleKey(e) {
         if (key === 39) { 
             if (dashIndex < 2) {
                 dashIndex++; // Move between Live, Movies, Series
-            } else if (dashIndex === 3) {
-                dashIndex = 4; // Move from Settings to Exit
+            } else if (dashIndex >= 3 && dashIndex < 5) {
+                dashIndex++; // Move between Reload, Settings, Exit
             }
         } 
         // 37: Left
         else if (key === 37) { 
             if (dashIndex > 0 && dashIndex <= 2) {
                 dashIndex--; // Move between Series, Movies, Live
-            } else if (dashIndex === 4) {
-                dashIndex = 3; // Move from Exit to Settings
+            } else if (dashIndex > 3) {
+                dashIndex--; // Move between Exit, Settings, Reload
             } else if (dashIndex === 3) {
-                dashIndex = 0; // Jump from Settings back to the first card
+                dashIndex = 0; // Jump from Reload back to the first card
             }
         } 
         // 40: Down
         else if (key === 40) { 
             if (dashIndex < 3) {
-                dashIndex = 3; // Go down to Settings from any top card
-            } else if (dashIndex === 3) {
-                dashIndex = 4; // Down from Settings goes to Exit
+                dashIndex = 3; // Go down to Reload from any top card
+            } else if (dashIndex < 5) {
+                dashIndex++; // Step through utility buttons
             }
         } 
         // 38: Up
         else if (key === 38) { 
             if (dashIndex >= 3) {
-                dashIndex = 0; // Go back up to the top row (Live TV)
+                dashIndex = 0; // Go back up to the top row
             }
         } 
         else if (key === 13) { // Enter
-            if (dashIndex === 0) startSection("live");
-            else if (dashIndex === 1) startSection("movie");
-            else if (dashIndex === 2) startSection("series");
-            else if (dashIndex === 3) openSettings();
-            else if (dashIndex === 4) tizen.application.getCurrentApplication().exit();
+            let id = dashFields[dashIndex];
+            if (id === "dash-live") startSection("live");
+            else if (id === "dash-movies") startSection("movie");
+            else if (id === "dash-series") startSection("series");
+            else if (id === "dash-reload") location.reload(); // REFRESH ACTION
+            else if (id === "dash-settings") openSettings();
+            else if (id === "dash-exit") tizen.application.getCurrentApplication().exit();
         }
         updateFocus();
     }
@@ -265,48 +352,120 @@ function handleKey(e) {
         }
     }
     else if (focusArea === "settings") {
+    		logDebug("inside settings");
         if (manageState === "main") {
+        		logDebug("inside main, set Index = " + setIndex);
             if (key === 38 && setIndex > 0) setIndex--;
             else if (key === 40 && setIndex < setFields.length - 1) setIndex++;
             else if (key === 13) handleSettingsSelect();
             else if (key === 10009) closeSettings();
         } 
         else if (manageState === "sections") {
-            if (key === 38 && setIndex > 0) setIndex--;
-            else if (key === 40 && setIndex < manageSections.length - 1) setIndex++;
-            else if (key === 13) loadToggleList(manageSections[setIndex]);
-            else if (key === 10009) {
+            // Navigation for selecting which section to manage (Live, Movies, or Series)
+            if (key === 38 && setIndex > 0) { // Up
+                setIndex--;
+                updateFocus();
+            } 
+            else if (key === 40 && setIndex < manageSections.length - 1) { // Down
+                setIndex++;
+                updateFocus();
+            } 
+            else if (key === 13) { // Enter
+                let selection = manageSections[setIndex];
+                if (selection === "back") {
+                    // Go back to main settings menu
+                    manageState = "main";
+                    setIndex = 2; // Return to 'Manage Categories' button
+                    document.getElementById('settings-main-menu').style.display = "block";
+                    document.getElementById('settings-category-menu').style.display = "none";
+                } else {
+                    // Enter the specific category list for Live, Movie, or Series
+                    //manageState = "categories";
+                    currentManageType = selection; // Store which one we are editing
+                    //setIndex = 0;
+                    renderManageCategories(); // This should be your function that lists categories with checkboxes
+                }
+            }
+            else if (key === 10009) { // Back button
+                manageState = "main";
+                setIndex = 2;
                 document.getElementById('settings-main-menu').style.display = "block";
                 document.getElementById('settings-category-menu').style.display = "none";
-                manageState = "main"; 
-                setIndex = 1;
             }
-            renderManageSections();
+            updateFocus();
+        }
+        else if (manageState === "accounts") {
+            // Navigation for Account List
+            if (key === 38 && setIndex > 0) setIndex--; // Up
+            else if (key === 40 && setIndex < savedAccounts.length) setIndex++; // Down (+1 for "Add New")
+            else if (key === 13) { // Enter Key
+                if (setIndex === savedAccounts.length) {
+                    // User clicked "+ Add New Account"
+                    serverConfig = { url: "", user: "", pass: "" };
+                    showLogin("switch"); // Pass "switch" as the origin
+                } else {
+                    // Switch to existing account logic...
+                    let selected = savedAccounts[setIndex];
+                    serverConfig = { url: selected.url, user: selected.user, pass: selected.pass };
+                    attemptLogin(true);
+                }
+            }
+            else if (key === 10009) { // Back key
+                manageState = "main";
+                setIndex = 1; // Return to "Switch Account" button
+                document.getElementById('settings-main-menu').style.display = "block";
+                document.getElementById('settings-category-menu').style.display = "none";
+            }
+            renderAccountList();
         }
         else if (manageState === "toggling") {
-            if (key === 38 && setIndex > 0) setIndex--;
-            else if (key === 40 && setIndex < categoryToggleData.length - 1) setIndex++;
+            // 38: Up - Change index and update visual highlight
+            if (key === 38 && setIndex > 0) {
+                setIndex--;
+                updateFocus(); // Move the orange bar
+            } 
+            // 40: Down - Change index and update visual highlight
+            else if (key === 40 && setIndex < categoryToggleData.length - 1) {
+                setIndex++;
+                updateFocus(); // Move the orange bar
+            } 
+            // 13: Enter - Perform the Toggle
             else if (key === 13) {
                 let selected = categoryToggleData[setIndex];
+                // currentManageType stores if we are in live, movie, or series
+                let list = hiddenCategories[currentManageType]; 
+                
                 if (selected.category_id === "TOGGLE_ALL") {
-                    if (hiddenCategories[currentType].length === 0) {
-                        hiddenCategories[currentType] = categoryToggleData.filter(c => c.category_id !== "TOGGLE_ALL").map(c => c.category_id);
-                    } else { 
-                        hiddenCategories[currentType] = []; 
+                    // Bulk toggle logic
+                    let allIds = categoryToggleData
+                        .filter(c => c.category_id !== "TOGGLE_ALL")
+                        .map(c => c.category_id);
+                    
+                    if (list.length >= allIds.length) {
+                        hiddenCategories[currentManageType] = []; // Show all
+                    } else {
+                        hiddenCategories[currentManageType] = allIds; // Hide all
                     }
                 } else {
+                    // Single item toggle logic
                     let catId = selected.category_id;
-                    let list = hiddenCategories[currentType];
                     let idx = list.indexOf(catId);
-                    if (idx === -1) list.push(catId); else list.splice(idx, 1);
+                    if (idx === -1) {
+                        list.push(catId); // Hide it
+                    } else {
+                        list.splice(idx, 1); // Show it
+                    }
                 }
-                saveToFs(serverConfig); 
-                renderToggleList();
+                
+                saveToFs();        // Save the change to the file
+                renderToggleList(); // Redraw the list to update [VISIBLE/HIDDEN] labels
+                updateFocus();      // Keep the focus on the current item
             }
-            else if (key === 10009) { 
-                manageState = "sections"; 
-                setIndex = 0; 
-                renderManageSections(); 
+            // 10009: Back
+            else if (key === 10009) {
+                manageState = "sections";
+                setIndex = 0;
+                renderManageSections();
             }
         }
     }
@@ -860,19 +1019,20 @@ function loadFromFs() {
                     if (data) {
                         var parsed = JSON.parse(data);
                         
-                        // Load Server Config
-                        serverConfig = parsed.server || { url: "", user: "", pass: "" };
+                        // Load Multi-Accounts
+                        savedAccounts = parsed.accounts || [];
                         
-                        // Load Hidden Categories
-                        if (parsed.hidden) hiddenCategories = parsed.hidden;
+                        // Find the active account or default to the first one
+                        let activeAccount = savedAccounts.find(a => a.active) || savedAccounts[0];
                         
-                        // Load Playback History (New)
-                        if (parsed.history) {
-                            playbackHistory = parsed.history;
-                            logDebug("History loaded from unified file");
+                        if (activeAccount) {
+                            serverConfig = { url: activeAccount.url, user: activeAccount.user, pass: activeAccount.pass };
+                            if (parsed.hidden) hiddenCategories = parsed.hidden;
+                            if (parsed.history) playbackHistory = parsed.history;
+                            attemptLogin(true); 
+                        } else { 
+                            showLogin(); 
                         }
-
-                        attemptLogin(true); 
                     } else { showLogin(); }
                 }, showLogin, "UTF-8");
             } catch(e) { showLogin(); }
@@ -880,81 +1040,110 @@ function loadFromFs() {
     } catch (e) { showLogin(); }
 }
 
-
-function saveToFs(config) {
+function saveToFs() {
     try {
         tizen.filesystem.resolve("documents", function(dir) {
             var file;
-            try { 
-                file = dir.resolve(FILE_NAME); 
-            } catch(e) { 
-                file = dir.createFile(FILE_NAME); 
-            }
+            try { file = dir.resolve(FILE_NAME); } catch(e) { file = dir.createFile(FILE_NAME); }
             file.openStream("w", function(stream) {
-                // Combine everything into one object
                 const saveData = { 
-                    server: config, 
+                    accounts: savedAccounts, 
                     hidden: hiddenCategories,
-                    history: playbackHistory // Save history here
+                    history: playbackHistory 
                 };
                 stream.write(JSON.stringify(saveData));
                 stream.close();
-                logDebug("Unified data saved to FS");
+                logDebug("Accounts and data saved.");
             }, null, "UTF-8");
         }, null, "rw");
-    } catch (e) {
-        logDebug("Save Error: " + e.message);
-    }
+    } catch (e) { logDebug("Save Error: " + e.message); }
 }
 
 
-//Replace your attemptLogin function in main.js
 async function attemptLogin(isAuto) {
+    // 1. If NOT an auto-login/switch, we must ensure we have values from inputs
+    // If it IS an auto-login, serverConfig is already populated by loadFromFs or the account list.
+    if (!isAuto) {
+        serverConfig.url = document.getElementById('input-url').value.trim();
+        serverConfig.user = document.getElementById('input-user').value.trim();
+        serverConfig.pass = document.getElementById('input-pass').value.trim();
+    }
+
+    // 2. Critical Validation Check
+    if (!serverConfig.url || !serverConfig.user || !serverConfig.pass) {
+        showLoginError("All fields are required");
+        return;
+    }
+
     const cleanUrl = serverConfig.url.replace(/\/+$/, "");
     const path = `${cleanUrl}/player_api.php?username=${serverConfig.user}&password=${serverConfig.pass}`;
+    
+    // Show spinner for feedback
+    document.getElementById('loading-spinner').style.display = "flex";
+
     try {
         const res = await fetch(path);
-        if (!res.ok) throw new Error("Server unreachable");
-        
         const data = await res.json();
         
         if (data.user_info && data.user_info.auth === 1) {
-            saveToFs(serverConfig);
+            // Manage Multi-Account List
+            savedAccounts.forEach(a => a.active = false);
+            let existing = savedAccounts.find(a => a.user === serverConfig.user && a.url === serverConfig.url);
             
+            if (existing) {
+                existing.active = true;
+                existing.pass = serverConfig.pass; // Update pass in case it changed
+            } else {
+                savedAccounts.push({ ...serverConfig, active: true });
+            }
+
+            saveToFs(); 
+            
+            // Hide all login/settings layers
             document.getElementById('login-screen').style.display = "none";
+            document.getElementById('settings-screen').style.display = "none";
+            document.getElementById('settings-category-menu').style.display = "none";
+            document.getElementById('settings-main-menu').style.display = "block";
+            
+            // Return to Dashboard
+            manageState = "main";
             document.getElementById('dashboard').style.display = "flex";
             focusArea = "dashboard";
-            dashIndex = 0;
-            updateFocus();
             
-            // Populate the Bottom Info Bar
-            const info = data.user_info;
-            document.getElementById('info-username').innerText = info.username || "Guest";
-            document.getElementById('info-status').innerText = (info.status || "Active").toUpperCase();
-            
-            // Expiry Date Formatting
-            if (info.exp_date && info.exp_date !== "null" && info.exp_date !== "0") {
-                const date = new Date(parseInt(info.exp_date) * 1000);
-                document.getElementById('info-expiry').innerText = date.toLocaleDateString();
-            } else {
-                document.getElementById('info-expiry').innerText = "Unlimited";
+            // Update the Dashboard info bar
+            document.getElementById('info-username').innerText = data.user_info.username || "-";
+            document.getElementById('info-status').innerText = data.user_info.status || "-";
+          
+            let expiry = "Unlimited";
+            if (data.user_info.exp_date && data.user_info.exp_date !== "null") {
+              let date = new Date(parseInt(data.user_info.exp_date) * 1000);
+              expiry = date.toLocaleDateString();
             }
+            document.getElementById('info-expiry').innerText = expiry;
+            document.getElementById('info-connections').innerText = (data.user_info.active_cons || "0") + " / " + (data.user_info.max_connections || "0");
             
-            // Connection Count
-            const active = info.active_cons || "0";
-            const max = info.max_connections || "1";
-            document.getElementById('info-connections').innerText = `${active} / ${max}`;
-
+            updateFocus();
+            document.getElementById('loading-spinner').style.display = "none";
         } else {
-        		showLoginError("Invalid Username or Password");
-            //showLogin();
+            document.getElementById('loading-spinner').style.display = "none";
+            showLoginError("Invalid Credentials");
         }
     } catch (e) { 
-        logDebug("Error From AttempLogin: " + e.message);
-        showLoginError("Connection Error: Check URL and Credentials");
-        showLogin();
+        document.getElementById('loading-spinner').style.display = "none";
+        
+        if (!isAuto) {
+            // 1. Reset the screen first
+            showLogin(loginOrigin); 
+            // 2. Then show the error so it doesn't get cleared
+            showLoginError("Connection Error"); 
+        } else {
+            // If it's an auto-login/switch, just show the error on the current screen
+            showLoginError("Connection Error");
+        }
     }
 }
+
+
 
 function showLoginError(msg) {
     const errorEl = document.getElementById('login-error');
@@ -965,9 +1154,16 @@ function showLoginError(msg) {
     logDebug("Login Error: " + msg);
 }
 
-function showLogin() {
+function showLogin(origin = "startup") {
+	loginOrigin = origin;
     focusArea = "login"; 
     loginIndex = 0;
+    
+    const errorEl = document.getElementById('login-error');
+    if (errorEl) {
+        errorEl.innerText = "";
+        errorEl.style.display = "none";
+    }
     
     // Ensure all other major screens are hidden to prevent overlap
     document.getElementById('dashboard').style.display = "none";
@@ -1044,22 +1240,34 @@ function hideMiniChannelList() {
     focusArea = "player";
 }
 
-function handleSettingsSelect() {
+function handleSettingsSelect() {	
     let id = setFields[setIndex];
-    if (id === "set-back") {
-        closeSettings();
-    } else if (id === "set-creds") {
-        document.getElementById('settings-screen').style.display = "none";
-        showLogin();
-    } else if (id === "set-manage-cats") {
-        // Switch to category management
+    logDebug("DEBUG: Field is: " + id);
+    if (id === "set-creds") {
+        showLogin(); // Goes back to login screen
+    } 
+    else if (id === "set-manage-accounts") {
+        document.getElementById('settings-main-menu').style.display = "none";
+        document.getElementById('settings-category-menu').style.display = "flex";
+        manageState = "accounts"; // Set state to handle account list keys
+        setIndex = 0;
+        renderAccountList();
+    } 
+    else if (id === "set-manage-cats") {
         document.getElementById('settings-main-menu').style.display = "none";
         document.getElementById('settings-category-menu').style.display = "flex";
         manageState = "sections";
         setIndex = 0;
         renderManageSections();
+    } 
+    else if (id === "set-back") {
+        document.getElementById('settings-screen').style.display = "none";
+        document.getElementById('dashboard').style.display = "flex";
+        focusArea = "dashboard";
+        updateFocus();
     }
 }
+
 
 /* Add these functions to main.js */
 
@@ -1092,31 +1300,35 @@ function loadToggleList(type) {
 function renderToggleList() {
     const list = document.getElementById('category-toggle-list');
     list.innerHTML = "";
-    document.getElementById('manage-title').innerText = "Manage " + currentType.toUpperCase();
+    
+    // Use currentManageType so the title says "Manage MOVIE" or "Manage SERIES"
+    document.getElementById('manage-title').innerText = "Manage " + currentManageType.toUpperCase();
 
     categoryToggleData.forEach((cat, i) => {
-        let isHidden = hiddenCategories[currentType].includes(cat.category_id);
+        // Check the specific list for the section we are actually managing
+        let isHidden = hiddenCategories[currentManageType].includes(cat.category_id);
+        
         let div = document.createElement('div');
         div.className = "item";
+        if (i === setIndex) div.classList.add("focused");
+        
         div.id = "toggle-cat-" + i;
         
         if (cat.category_id === "TOGGLE_ALL") {
             div.innerText = cat.category_name;
         } else {
-            // Create color-coded status strings
             let statusLabel = isHidden ? 
                 '<span style="color: #ff4444;"> [HIDDEN]</span>' : 
                 '<span style="color: #00c851;"> [VISIBLE]</span>';
-            
             div.innerHTML = cat.category_name + statusLabel;
         }
         
-        // Dim the overall text slightly if hidden, otherwise keep it white
         div.style.color = isHidden ? "#888" : "#fff";
-
         list.appendChild(div);
     });
-    updateFocus();
+    
+    const focusedEl = list.querySelector('.focused');
+    if (focusedEl) focusedEl.scrollIntoView({ block: 'nearest' });
 }
 
 function renderManageSections() {
@@ -1127,11 +1339,14 @@ function renderManageSections() {
     manageSections.forEach((sec, i) => {
         let div = document.createElement('div');
         div.className = "item";
-        div.id = "manage-sec-" + i;
-        	if (sec === 'back')
-            div.innerText = sec;
-        	else
+        // USE THE STRING NAME FOR THE ID TO MATCH updateFocus()
+        div.id = "manage-" + sec; 
+        
+        if (sec === 'back') {
+            div.innerText = "Back";
+        } else {
             div.innerText = "Manage " + sec.toUpperCase();
+        }
         list.appendChild(div);
     });
     updateFocus();
@@ -1326,3 +1541,75 @@ function togglePasswordVisibility() {
         logDebug("Password visibility: HIDDEN");
     }
 }
+
+
+
+function renderAccountList() {
+    const list = document.getElementById('category-toggle-list');
+    list.innerHTML = "";
+    document.getElementById('manage-title').innerText = "Switch Account";
+
+    // Loop through saved accounts
+    savedAccounts.forEach((acc, i) => {
+        let div = document.createElement('div');
+        div.className = "item";
+        
+        // Add 'focused' class if this index matches our current navigation position
+        if (i === setIndex) {
+            div.classList.add("focused");
+        }
+        
+        div.id = "acc-item-" + i;
+        
+        let status = acc.active ? '<span style="color: #00c851;"> [ACTIVE]</span>' : '';
+        // Display username and a shortened version of the URL
+        let displayUrl = acc.url.replace(/^https?:\/\//, '');
+        div.innerHTML = acc.user + " @ " + displayUrl + status;
+
+        list.appendChild(div);
+    });
+    
+    // Handle the "+ Add New Account" option at the end of the list
+    let addDiv = document.createElement('div');
+    addDiv.className = "item";
+    if (setIndex === savedAccounts.length) {
+        addDiv.classList.add("focused");
+    }
+    addDiv.id = "acc-item-" + savedAccounts.length;
+    addDiv.innerText = "+ Add New Account";
+    list.appendChild(addDiv);
+    
+    // Ensure the container scrolls to follow the focus
+    const focusedEl = list.querySelector('.focused');
+    if (focusedEl) {
+        focusedEl.scrollIntoView({ block: 'nearest' });
+    }
+}
+
+
+function renderManageCategories() {
+    // Determine which section's categories to fetch based on user selection
+    let action = "";
+    if (currentManageType === "live") action = "get_live_categories";
+    else if (currentManageType === "movie") action = "get_vod_categories";
+    else if (currentManageType === "series") action = "get_series_categories";
+
+    document.getElementById('loading-spinner').style.display = "flex";
+
+    fetch(`${serverConfig.url}/player_api.php?username=${serverConfig.user}&password=${serverConfig.pass}&action=${action}`)
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('loading-spinner').style.display = "none";
+            // Add a "Toggle All" option at the top of the list
+            categoryToggleData = [{ category_id: "TOGGLE_ALL", category_name: "--- TOGGLE ALL ---" }, ...data];
+            manageState = "toggling";
+            setIndex = 0;
+            renderToggleList(); // Use your existing toggle renderer
+        })
+        .catch(e => {
+            document.getElementById('loading-spinner').style.display = "none";
+            logDebug("Error loading categories to manage: " + e.message);
+        });
+}
+
+

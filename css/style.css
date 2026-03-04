@@ -286,4 +286,48 @@ body { margin: 0; background: #000; color: #fff; font-family: sans-serif; overfl
 
 
 
+.dash-util {
+    padding: 15px 30px;
+    background: #1a1a1a;
+    border-radius: 10px;
+    font-size: 24px;
+    color: #fff;
+    border: 3px solid transparent;
+    transition: 0.2s;
+}
+
+/* This ensures the reload button glows orange like the others when selected */
+.dash-util.focused {
+    background: #f39c12 !important;
+    color: #000 !important;
+    border-color: #fff !important;
+    transform: scale(1.05);
+}
+
+/* When navigating the list itself (Orange) */
+#category-list .item.focused {
+    background-color: #ff9800;
+    color: white;
+}
+
+/* When navigating the grid, keep the sidebar item highlighted (Darker Blue/Gray) */
+#category-list .item.active-category {
+    background-color: #2c3e50; 
+    border-left: 5px solid #ff9800;
+    color: white;
+}
+
+/* Persistent highlight: The category currently being viewed */
+#category-list .item.active-category {
+    background-color: #34495e !important; /* Muted Blue/Gray */
+    border-left: 6px solid #ff9800;      /* Orange strip on the edge */
+    color: white;
+}
+
+/* Moving highlight: Where the remote control is actually pointing */
+#category-list .item.focused {
+    background-color: #ff9800 !important; /* Bright Orange */
+    color: black !important;
+    transform: scale(1.05);
+    z-index: 10;
 }
